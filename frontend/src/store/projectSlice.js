@@ -26,14 +26,17 @@ const projectSlice = createSlice({
   name: "project",
   initialState: {
     projectKey: getStoredProjectKey(),
+    selectionVersion: 0,
   },
   reducers: {
     setProjectKey(state, action) {
       state.projectKey = action.payload || null;
+      state.selectionVersion += 1;
       persistProjectKey(state.projectKey);
     },
     clearProjectKey(state) {
       state.projectKey = null;
+      state.selectionVersion += 1;
       persistProjectKey(null);
     },
   },

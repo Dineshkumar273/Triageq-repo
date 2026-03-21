@@ -15,7 +15,8 @@ export default function Header() {
 
 
   function handleJiraConnection() {
-  window.location.href = "/auth/jira/login";
+  const authBaseUrl = import.meta.env.DEV ? "http://localhost:5000" : "";
+  window.location.href = `${authBaseUrl}/auth/jira/login`;
   }
 
   if (loading) return null;

@@ -14,7 +14,7 @@ export default function Sprint() {
     COMMIT_SPRINT
   );
   const dispatch = useDispatch();
-  const projectKey = useSelector((state) => state.project.projectKey);
+  const { projectKey, selectionVersion } = useSelector((state) => state.project);
 
   const [isDisabled, setDisabled] = useState(false);
   const [btnText, setBtnText] = useState("Generate Sprint Plan");
@@ -22,6 +22,8 @@ export default function Sprint() {
   const [toastMessage, setToastMessage] = useState("");
   const [msgIndex, setMsgIndex] = useState(0);
   const [sprintPlans, setSprintPlans] = useState([]);
+  const [generatedForProject, setGeneratedForProject] = useState(null);
+  const [generatedForVersion, setGeneratedForVersion] = useState(null);
 
   const messages = [
     "Analyzing backlog...",
@@ -48,14 +50,24 @@ export default function Sprint() {
     }
 
     setSprintPlans([]);
+    setGeneratedForProject(null);
     setDisabled(false);
     setBtnText("Generate Sprint Plan");
     setToastMessage("");
-  }, [projectKey]);
+  }, [projectKey, selectionVersion]);
 
   useEffect(() => {
-    setSprintPlans(data?.generateSprintPlan || []);
-  }, [data]);
+    if (!data?.generateSprintPlan?.length || !generatedForProject) {
+      return;
+    }
+
+    if (
+      generatedForProject === projectKey &&
+      generatedForVersion === selectionVersion
+    ) {
+      setSprintPlans(data.generateSprintPlan);
+    }
+  }, [data, generatedForProject, generatedForVersion, projectKey, selectionVersion]);
 
   async function handleSprint() {
     if (!projectKey) {
@@ -73,6 +85,8 @@ export default function Sprint() {
       await generateSprint({
         variables: { projectKey },
       });
+      setGeneratedForProject(projectKey);
+      setGeneratedForVersion(selectionVersion);
     } catch (err) {
       console.error(err);
       setError("Failed to generate sprint plan. Please try again.");
