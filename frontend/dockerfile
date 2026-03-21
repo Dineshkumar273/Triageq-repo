@@ -1,4 +1,4 @@
-FROM node:18 as build
+FROM node:20 AS build
 
 WORKDIR /app
 
@@ -9,9 +9,10 @@ COPY . .
 
 RUN npm run build
 
-# Serve with nginx
+# Serve built assets with nginx and proxy API traffic to backend
 FROM nginx:alpine
 
 COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
