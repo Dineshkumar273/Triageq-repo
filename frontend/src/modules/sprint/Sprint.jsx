@@ -8,7 +8,10 @@ import { clearProjectKey } from "../../store/projectSlice";
 
 export default function Sprint() {
   const [generateSprint, { data, loading }] = useLazyQuery(
-    AI_GENERATE_SPRINT
+    AI_GENERATE_SPRINT,
+    {
+      fetchPolicy: "no-cache",
+    }
   );
   const [commitSprint, { loading: commitLoading }] = useMutation(
     COMMIT_SPRINT
@@ -24,6 +27,7 @@ export default function Sprint() {
   const [sprintPlans, setSprintPlans] = useState([]);
   const [generatedForProject, setGeneratedForProject] = useState(null);
   const [generatedForVersion, setGeneratedForVersion] = useState(null);
+  const [regenerateCount, setRegenerateCount] = useState(0);
 
   const messages = [
     "Analyzing backlog...",
@@ -80,13 +84,22 @@ export default function Sprint() {
     setDisabled(true);
     setBtnText("Analyzing Backlog...");
     setError("");
+    setSprintPlans([]);
+
+    const nextRegenerateCount = regenerateCount + 1;
+    setRegenerateCount(nextRegenerateCount);
 
     try {
-      await generateSprint({
-        variables: { projectKey },
+      const result = await generateSprint({
+        variables: {
+          projectKey,
+          regenerateKey: `${projectKey}-${selectionVersion}-${nextRegenerateCount}`,
+        },
+        fetchPolicy: "no-cache",
       });
       setGeneratedForProject(projectKey);
       setGeneratedForVersion(selectionVersion);
+      setSprintPlans(result?.data?.generateSprintPlan || []);
     } catch (err) {
       console.error(err);
       setError("Failed to generate sprint plan. Please try again.");

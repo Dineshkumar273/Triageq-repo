@@ -1,15 +1,21 @@
-import Card from "../../components/ui/Cards";
 import { useState } from "react";
 import { useQuery, useMutation } from "@apollo/client/react";
 import { GET_ENGINEERS, GET_JIRA_USERS } from "../../graphql/queries";
 import { ADD_ENGINEER ,DELETE_ENGINEER} from "../../graphql/mutation";
 import { Trash2 } from "lucide-react";
+import { useSelector } from "react-redux";
 
 
 export default function Engineers() {
-  const { data: jiraData } = useQuery(GET_JIRA_USERS);
+  const projectKey = useSelector((state) => state.project.projectKey);
+  const { data: jiraData } = useQuery(GET_JIRA_USERS, {
+    variables: { projectKey },
+  });
 
-  const { data: engineerData, refetch } = useQuery(GET_ENGINEERS);
+  const { data: engineerData, refetch } = useQuery(GET_ENGINEERS, {
+    variables: { projectKey },
+    skip: !projectKey,
+  });
 
   const [addEngineer] = useMutation(ADD_ENGINEER);
   const [deleteEngineer] = useMutation(DELETE_ENGINEER);
@@ -26,10 +32,11 @@ export default function Engineers() {
 
   // 👉 Add Engineer
   const handleAdd = async () => {
-    if (!name) return;
+    if (!name || !projectKey) return;
 
     await addEngineer({
       variables: {
+        projectKey,
         name,
         role,
         capacity,
@@ -46,7 +53,6 @@ export default function Engineers() {
   };
 
 const handleDelete = async (id) => {
- console
   await deleteEngineer({
     variables: { id },
   });
@@ -56,6 +62,11 @@ const handleDelete = async (id) => {
 
   return (
     <div>
+   {!projectKey && (
+    <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-700">
+      Select a project to manage engineers for that Jira team.
+    </div>
+   )}
    <div className="flex justify-between items-center mb-6">
   <h1 className="text-2xl font-semibold">
     Resource Management
@@ -63,7 +74,8 @@ const handleDelete = async (id) => {
 
   <button
     onClick={() => setShowForm(true)}
-    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg"
+    disabled={!projectKey}
+    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
   >
     + Add Engineer
   </button>

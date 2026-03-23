@@ -69,7 +69,7 @@ type Sprint {
 }
 
 extend type Query {
-  generateSprintPlan(projectKey: String!): [Sprint]
+  generateSprintPlan(projectKey: String!, regenerateKey: String): [Sprint]
 }
 
 
@@ -80,15 +80,16 @@ type JiraUser {
 }
 
 extend type Query {
-  getJiraUsers: [JiraUser]
+  getJiraUsers(projectKey: String): [JiraUser]
 }
 
 extend type Query {
-  getEngineers: [Engineer]
+  getEngineers(projectKey: String!): [Engineer]
 }
 
 extend type Mutation {
   addEngineer(
+    projectKey: String!
     name: String!
     role: String
     capacity: Int
@@ -106,6 +107,8 @@ type Engineer {
   capacity: Int
   jiraAccountId: String
   avatar: String
+  projectKey: String
+  userId: String
 }
 
 

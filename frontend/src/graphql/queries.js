@@ -61,8 +61,8 @@ export const GET_PROJECTS = gql`
 `;
 
 export const AI_GENERATE_SPRINT = gql`
-  query ($projectKey: String!) {
-    generateSprintPlan(projectKey: $projectKey) {
+  query ($projectKey: String!, $regenerateKey: String) {
+    generateSprintPlan(projectKey: $projectKey, regenerateKey: $regenerateKey) {
       sprintNumber
       totalPoints
       capacity
@@ -72,6 +72,7 @@ export const AI_GENERATE_SPRINT = gql`
         summary
         points
         assignee
+        jiraAccountId
       }
     }
   }
@@ -79,8 +80,8 @@ export const AI_GENERATE_SPRINT = gql`
 
 
 export const GET_JIRA_USERS = gql`
-  query {
-    getJiraUsers {
+  query GetJiraUsers($projectKey: String) {
+    getJiraUsers(projectKey: $projectKey) {
       name
       accountId
       avatar
@@ -90,13 +91,14 @@ export const GET_JIRA_USERS = gql`
 
 
 export const GET_ENGINEERS = gql`
-  query {
-    getEngineers {
+  query GetEngineers($projectKey: String!) {
+    getEngineers(projectKey: $projectKey) {
       id
       name
       role
       capacity
       avatar
+      jiraAccountId
     }
   }
 `;

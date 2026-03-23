@@ -12,6 +12,7 @@ docker compose -f docker-compose.dev.yml up
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:5000`
+- OAuth redirect target: `FRONTEND_URL=http://localhost:5173`
 
 ## What you get
 

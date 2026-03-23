@@ -3,6 +3,7 @@ import { gql } from "@apollo/client";
 
 export const ADD_ENGINEER = gql`
   mutation AddEngineer(
+    $projectKey: String!
     $name: String!
     $role: String
     $capacity: Int
@@ -10,6 +11,7 @@ export const ADD_ENGINEER = gql`
     $avatar: String
   ) {
     addEngineer(
+      projectKey: $projectKey
       name: $name
       role: $role
       capacity: $capacity

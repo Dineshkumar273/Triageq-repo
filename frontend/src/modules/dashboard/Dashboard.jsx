@@ -3,7 +3,7 @@ import { useApolloClient, useQuery } from "@apollo/client/react";
 import { useSelector } from "react-redux";
 import { Ticket, AlertCircle, CheckCircle, BarChart } from "lucide-react";
 import Card from "../../components/ui/Cards";
-import { GET_STATS } from "../../graphql/queries";
+import { GET_AI_INSIGHTS, GET_STATS } from "../../graphql/queries";
 import RecentActivity from "./RecentActivity";
 import AIInsights from "./AIInsights";
 
@@ -12,6 +12,11 @@ export default function StatsGrid() {
   const projectKey = useSelector((state) => state.project.projectKey);
 
   const { data, loading } = useQuery(GET_STATS, {
+    fetchPolicy: "cache-and-network",
+    variables: { projectKey },
+    skip: !projectKey,
+  });
+  const { data: insightsData } = useQuery(GET_AI_INSIGHTS, {
     fetchPolicy: "cache-and-network",
     variables: { projectKey },
     skip: !projectKey,
@@ -55,7 +60,7 @@ export default function StatsGrid() {
     },
     {
       title: "SPRINTS",
-      value: 0,
+      value: insightsData?.getAIInsights?.sprintEstimate || 0,
       icon: <BarChart size={16} />,
       color: "text-gray-500",
     },

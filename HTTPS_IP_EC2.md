@@ -53,8 +53,8 @@ First test against staging:
 sudo certbot certonly --staging \
   --preferred-profile shortlived \
   --webroot \
-  --webroot-path REPO_PATH/deploy/certbot-www \
-  --ip-address YOUR_PUBLIC_IP
+  --webroot-path  /home/ubuntu/home/Triageq-repo/deploy/certbot-www \
+  --ip-address 13.127.44.111
 ```
 
 Then issue the real certificate:
@@ -63,15 +63,14 @@ Then issue the real certificate:
 sudo certbot certonly \
   --preferred-profile shortlived \
   --webroot \
-  --webroot-path REPO_PATH/deploy/certbot-www \
-  --ip-address YOUR_PUBLIC_IP
+  --webroot-path /home/ubuntu/home/Triageq-repo/deploy/certbot-www \
+  --ip-address 13.127.44.111
 ```
 
 ## 5. Generate the HTTPS Nginx config
 
 ```bash
-chmod +x deploy/render-ip-ssl-config.sh
-./deploy/render-ip-ssl-config.sh YOUR_PUBLIC_IP
+chmod +x deploy/render-ip-ssl-config.sh ./deploy/render-ip-ssl-config.sh 13.127.44.111
 ```
 
 This creates:

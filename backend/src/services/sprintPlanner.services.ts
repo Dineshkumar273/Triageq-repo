@@ -58,6 +58,51 @@ type AIResponseSprint = {
   tickets?: Array<string | Partial<NormalizedTicket>>;
 };
 
+function createSeededValue(input: string): number {
+  let hash = 0;
+
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
+  }
+
+  return hash;
+}
+
+function sortTicketsForSeed(
+  tickets: NormalizedTicket[],
+  regenerateKey?: string
+): NormalizedTicket[] {
+  if (!regenerateKey) {
+    return [...tickets].sort((a, b) => b.points - a.points);
+  }
+
+  return [...tickets].sort((a, b) => {
+    if (b.points !== a.points) {
+      return b.points - a.points;
+    }
+
+    return (
+      createSeededValue(`${regenerateKey}:${a.key}`) -
+      createSeededValue(`${regenerateKey}:${b.key}`)
+    );
+  });
+}
+
+function sortEngineersForSeed(
+  engineers: EngineerInput[],
+  regenerateKey?: string
+): EngineerInput[] {
+  if (!regenerateKey) {
+    return engineers;
+  }
+
+  return [...engineers].sort(
+    (a, b) =>
+      createSeededValue(`${regenerateKey}:${a.name}`) -
+      createSeededValue(`${regenerateKey}:${b.name}`)
+  );
+}
+
 /* ------------------ HELPERS ------------------ */
 
 function safeParse(content: string): AIResponseSprint[] {
@@ -133,11 +178,13 @@ function normalizeAITicket(
 
 function assignBalanced(
   tickets: NormalizedTicket[],
-  engineers: EngineerInput[]
+  engineers: EngineerInput[],
+  regenerateKey?: string
 ): NormalizedTicket[] {
+  const orderedEngineers = sortEngineersForSeed(engineers, regenerateKey);
   const usage: Record<string, { used: number; capacity: number }> = {};
 
-  engineers.forEach((engineer) => {
+  orderedEngineers.forEach((engineer) => {
     usage[engineer.name] = {
       used: 0,
       capacity: engineer.capacity,
@@ -146,10 +193,10 @@ function assignBalanced(
 
   return tickets.map((ticket) => {
     if (ticket.assignee && usage[ticket.assignee]) {
-      const assignedEngineer = usage[ticket.assignee];
+        const assignedEngineer = usage[ticket.assignee];
       if (assignedEngineer.used + ticket.points <= assignedEngineer.capacity) {
         assignedEngineer.used += ticket.points;
-        const matchingEngineer = engineers.find(
+        const matchingEngineer = orderedEngineers.find(
           (engineer) => engineer.name === ticket.assignee
         );
         return {
@@ -166,7 +213,7 @@ function assignBalanced(
     for (const [name, data] of sorted) {
       if (data.used + ticket.points <= data.capacity) {
         data.used += ticket.points;
-        const matchingEngineer = engineers.find(
+        const matchingEngineer = orderedEngineers.find(
           (engineer) => engineer.name === name
         );
         return {
@@ -183,48 +230,83 @@ function assignBalanced(
 
 function splitIntoSprints(
   tickets: NormalizedTicket[],
-  capacity: number
+  capacity: number,
+  maxTicketsPerSprint = Number.POSITIVE_INFINITY,
+  regenerateKey?: string
 ): SprintPlan[] {
-  const sorted = [...tickets].sort((a, b) => b.points - a.points);
-  const sprints: SprintPlan[] = [];
+  const sorted = sortTicketsForSeed(tickets, regenerateKey);
+  const sprintCount = Math.max(
+    Math.ceil(
+      sorted.reduce((total, ticket) => total + ticket.points, 0) /
+        Math.max(capacity, 1)
+    ),
+    Number.isFinite(maxTicketsPerSprint)
+      ? Math.ceil(sorted.length / Math.max(maxTicketsPerSprint, 1))
+      : 1,
+    1
+  );
+  const sprints: SprintPlan[] = Array.from({ length: sprintCount }, (_, index) => ({
+    sprintNumber: index + 1,
+    tickets: [],
+    totalPoints: 0,
+  }));
 
-  while (sorted.length) {
-    const sprint: SprintPlan = {
-      sprintNumber: sprints.length + 1,
-      tickets: [],
-      totalPoints: 0,
-    };
+  for (const ticket of sorted) {
+    const availableSprint = sprints
+      .filter(
+        (sprint) =>
+          sprint.totalPoints + ticket.points <= capacity &&
+          sprint.tickets.length < maxTicketsPerSprint
+      )
+      .sort((a, b) => {
+        if (a.totalPoints !== b.totalPoints) {
+          return a.totalPoints - b.totalPoints;
+        }
 
-    for (let i = 0; i < sorted.length; i++) {
-      const ticket = sorted[i];
+        return a.tickets.length - b.tickets.length;
+      })[0];
 
-      if (sprint.totalPoints + ticket.points <= capacity) {
-        sprint.tickets.push(ticket);
-        sprint.totalPoints += ticket.points;
-        sorted.splice(i, 1);
-        i--;
+    if (availableSprint) {
+      availableSprint.tickets.push(ticket);
+      availableSprint.totalPoints += ticket.points;
+      continue;
+    }
+
+    const fallbackSprint = sprints.sort((a, b) => {
+      if (a.tickets.length !== b.tickets.length) {
+        return a.tickets.length - b.tickets.length;
       }
-    }
 
-    if (sprint.tickets.length === 0) {
-      const [largestTicket] = sorted.splice(0, 1);
-      sprint.tickets.push(largestTicket);
-      sprint.totalPoints = largestTicket.points;
-    }
+      return a.totalPoints - b.totalPoints;
+    })[0];
 
-    sprints.push(sprint);
+    fallbackSprint.tickets.push(ticket);
+    fallbackSprint.totalPoints += ticket.points;
   }
 
-  return sprints;
+  return sprints.filter((sprint) => sprint.tickets.length > 0);
+}
+
+function getMaxTicketsPerSprint(engineers: EngineerInput[]): number {
+  if (!engineers.length) {
+    return 6;
+  }
+
+  return Math.max(engineers.length * 2, 4);
 }
 
 function formatSprintPlans(
   sprints: SprintPlan[],
   capacity: number,
-  engineers: EngineerInput[]
+  engineers: EngineerInput[],
+  regenerateKey?: string
 ): SprintPlan[] {
   return sprints.map((sprint, index) => {
-    const balancedTickets = assignBalanced(sprint.tickets, engineers);
+    const balancedTickets = assignBalanced(
+      sprint.tickets,
+      engineers,
+      regenerateKey
+    );
 
     return {
       sprintNumber: index + 1,
@@ -312,15 +394,62 @@ function buildAISprintPlans(
     .filter((sprint) => sprint.tickets.length > 0);
 }
 
+function buildHeuristicSprintPlans(
+  cleanTickets: NormalizedTicket[],
+  capacity: number,
+  engineers: EngineerInput[],
+  regenerateKey?: string
+): SprintPlan[] {
+  const maxTicketsPerSprint = getMaxTicketsPerSprint(engineers);
+  const baseSprints = splitIntoSprints(
+    cleanTickets,
+    capacity,
+    maxTicketsPerSprint,
+    regenerateKey
+  );
+  const formatted = formatSprintPlans(
+    baseSprints,
+    capacity,
+    engineers,
+    regenerateKey
+  );
+  return validateAssignments(formatted, engineers);
+}
+
+async function fetchAISprintPlans(prompt: string): Promise<any> {
+  return Promise.race<any>([
+    ollama.chat({
+      model: "gpt-oss:120b-cloud",
+      messages: [{ role: "user", content: prompt }],
+    }),
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error("AI sprint planning timed out"));
+      }, config.sprintAiTimeoutMs);
+    }),
+  ]);
+}
+
 /* ------------------ MAIN FUNCTION ------------------ */
 
 export async function generateAISprint(
   tickets: TicketInput[],
   capacity: number,
-  engineers: EngineerInput[]
+  engineers: EngineerInput[],
+  regenerateKey?: string
 ): Promise<SprintPlan[]> {
   try {
     const cleanTickets = normalizeTickets(tickets);
+    const heuristicPlans = buildHeuristicSprintPlans(
+      cleanTickets,
+      capacity,
+      engineers,
+      regenerateKey
+    );
+
+    if (!config.sprintAiEnabled) {
+      return heuristicPlans;
+    }
 
     const prompt = `
 You are an expert Agile Sprint Planner.
@@ -372,27 +501,40 @@ RETURN STRICT JSON ONLY:
 ]
 `;
 
-    const res = await ollama.chat({
-      model: "gpt-oss:120b-cloud",
-      messages: [{ role: "user", content: prompt }],
-    });
+    const res = await fetchAISprintPlans(prompt);
 
     const content = res?.message?.content;
     if (!content) throw new Error("AI response empty");
 
     const ai = safeParse(content);
     const aiSprints = buildAISprintPlans(ai, cleanTickets);
+    const maxTicketsPerSprint = getMaxTicketsPerSprint(engineers);
 
     const sourceSprints =
       aiSprints.length > 0
         ? aiSprints
-        : splitIntoSprints(cleanTickets, capacity);
+        : splitIntoSprints(
+            cleanTickets,
+            capacity,
+            maxTicketsPerSprint,
+            regenerateKey
+          );
 
-    const formatted = formatSprintPlans(sourceSprints, capacity, engineers);
+    const formatted = formatSprintPlans(
+      sourceSprints,
+      capacity,
+      engineers,
+      regenerateKey
+    );
 
     return validateAssignments(formatted, engineers);
   } catch (err) {
     console.error("AI failed:", err);
-    return [];
+    return buildHeuristicSprintPlans(
+      normalizeTickets(tickets),
+      capacity,
+      engineers,
+      regenerateKey
+    );
   }
 }

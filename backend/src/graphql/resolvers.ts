@@ -8,11 +8,20 @@ import { generateAISprint } from "../services/sprintPlanner.services";
 import Engineer from "../models/enginner.model";
 formatEstimate
 
+function requireUserId(context: any) {
+  const userId = context?.user?.id;
+
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+
+  return userId;
+}
+
 const resolvers = {
   Query: {
     getJiraTickets: async (_: any, { projectKey }: any, context: any): Promise<JiraTicket[]> => {
-
-      const UserId = context?.user?.id
+      const UserId = requireUserId(context);
 
       const issues = await fetchAllJiraTickets(UserId, projectKey);
 
@@ -32,8 +41,9 @@ const resolvers = {
       }));
     },
     getJiraStats: async (_: any, { projectKey }: any, context: any) => {
+      const userId = requireUserId(context);
       console.log(projectKey)
-      const issues = await fetchJiraTickets(context.user.id, projectKey);
+      const issues = await fetchJiraTickets(userId, projectKey);
       return {
         total: issues.length,
         unassigned: issues.filter((i: any) => !i.fields.assignee).length,
@@ -90,7 +100,7 @@ const resolvers = {
       }));
     },
     getAIInsights: async (_: any, { projectKey }: any, context: any) => {
-      const userId = context.user.id;
+      const userId = requireUserId(context);
 
       const issues = await fetchJiraTickets(userId, projectKey);
 
@@ -121,9 +131,10 @@ const resolvers = {
             : "Proceed with current sprint plan",
       };
     },
-    generateSprintPlan: async (_: any, { projectKey }: any, context: any) => {
-      const tickets = await fetchJiraTickets(context.user.id, projectKey);
-      const engineers = await Engineer.find();
+    generateSprintPlan: async (_: any, { projectKey, regenerateKey }: any, context: any) => {
+      const userId = requireUserId(context);
+      const tickets = await fetchJiraTickets(userId, projectKey);
+      const engineers = await Engineer.find({ userId, projectKey });
       const sprintEngineers = engineers
         .filter(
           (engineer) =>
@@ -137,19 +148,32 @@ const resolvers = {
           jiraAccountId: engineer.jiraAccountId ?? undefined,
         }));
 
+      const totalCapacity = sprintEngineers.reduce(
+        (sum, engineer) => sum + engineer.capacity,
+        0
+      );
+      const sprintCapacity = totalCapacity > 0 ? totalCapacity : 40;
+
       console.log(engineers)
 
-      return generateAISprint(tickets, 80, sprintEngineers); // capacity
+      return generateAISprint(
+        tickets,
+        sprintCapacity,
+        sprintEngineers,
+        regenerateKey
+      );
     },
 
     getJiraUsers:async(_: any, { projectKey }: any, context: any)=>{
+      const userId = requireUserId(context);
 
       console.log(context.user)
-      return await getAllJiraUsers(context.user.id);
+      return await getAllJiraUsers(userId);
 
     },
     getEngineers:async(_: any, { projectKey }: any, context: any)=>{
-     return await Engineer.find()
+      const userId = requireUserId(context);
+      return await Engineer.find({ userId, projectKey })
     }
   },
 
@@ -157,20 +181,43 @@ const resolvers = {
     connectJira: async () => {
       return "http://localhost:5000/auth/jira/login";
     },
-    addEngineer: async (_:any, args:any) => {
-      const engineer = await Engineer.create(args);
-      return engineer;
+    addEngineer: async (_:any, args:any, context: any) => {
+      const userId = requireUserId(context);
+      const engineerData = {
+        ...args,
+        userId,
+      };
+
+      if (!args.jiraAccountId) {
+        return await Engineer.create(engineerData);
+      }
+
+      return await Engineer.findOneAndUpdate(
+        {
+          userId,
+          projectKey: args.projectKey,
+          jiraAccountId: args.jiraAccountId,
+        },
+        engineerData,
+        {
+          upsert: true,
+          new: true,
+          setDefaultsOnInsert: true,
+        }
+      );
     },
   
-  deleteEngineer: async (_:any, { id }:any) => {
-    await Engineer.findByIdAndDelete(id);
+  deleteEngineer: async (_:any, { id }:any, context: any) => {
+    const userId = requireUserId(context);
+    await Engineer.findOneAndDelete({ _id: id, userId });
     return true;
   },
   commitSprintToJira: async (_: any, args: any, context :any) => {
+  const userId = requireUserId(context);
   const { projectKey, sprints } = args;
 
   return await commitSprintToJira(
-    context.user.id,
+    userId,
     projectKey,
     sprints
   );

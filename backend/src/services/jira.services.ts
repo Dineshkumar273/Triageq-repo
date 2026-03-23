@@ -225,6 +225,15 @@ export async function getJiraEngineers(userId: string, projectKey: string) {
   }));
 }
 
+async function getAssignableAccountIds(userId: string, projectKey: string) {
+  const engineers = await getJiraEngineers(userId, projectKey);
+  return new Set(
+    engineers
+      .map((engineer: { jiraId?: string }) => engineer.jiraId)
+      .filter((jiraId: string | undefined): jiraId is string => Boolean(jiraId))
+  );
+}
+
 export async function getAllJiraUsers(userId: string) {
   const tokenData = await getUserToken(userId);
 
@@ -361,16 +370,28 @@ export async function updateIssue(
 
   if (!tokenData) throw new Error("No Jira token");
 
-  await axios.put(
-    `https://api.atlassian.com/ex/jira/${tokenData.cloudId}/rest/api/3/issue/${issueKey}`,
-    { fields: updates },
-    {
-      headers: {
-        Authorization: `Bearer ${tokenData.accessToken}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  try {
+    await axios.put(
+      `https://api.atlassian.com/ex/jira/${tokenData.cloudId}/rest/api/3/issue/${issueKey}`,
+      { fields: updates },
+      {
+        headers: {
+          Authorization: `Bearer ${tokenData.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (err: any) {
+    console.error("Jira updateIssue failed:", {
+      issueKey,
+      updates,
+      status: err.response?.status,
+      data: err.response?.data,
+      url: err.config?.url,
+      body: err.config?.data,
+    });
+    throw err;
+  }
 }
 
 export async function commitSprintToJira(
@@ -380,6 +401,7 @@ export async function commitSprintToJira(
 ) {
   try {
     const boardId = await getBoardId(userId, projectKey);
+    const assignableAccountIds = await getAssignableAccountIds(userId, projectKey);
 
     if (!boardId) {
       throw new Error(
@@ -403,14 +425,25 @@ export async function commitSprintToJira(
         let jiraAccountId = ticket.jiraAccountId;
 
         if (!jiraAccountId && ticket.assignee && ticket.assignee !== "Unassigned") {
-          const engineer = await Engineer.findOne({ name: ticket.assignee });
+          const engineer = await Engineer.findOne({
+            userId,
+            projectKey,
+            name: ticket.assignee,
+          });
           jiraAccountId = engineer?.jiraAccountId;
         }
 
-        if (jiraAccountId) {
+        if (jiraAccountId && assignableAccountIds.has(jiraAccountId)) {
           updates.assignee = {
             accountId: jiraAccountId,
           };
+        } else if (jiraAccountId) {
+          console.warn("Skipping Jira assignee update for non-assignable user:", {
+            issueKey: ticket.key,
+            jiraAccountId,
+            assignee: ticket.assignee,
+            projectKey,
+          });
         }
 
         if (ticket.points) {

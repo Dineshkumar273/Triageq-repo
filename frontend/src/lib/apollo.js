@@ -1,11 +1,45 @@
-import {ApolloClient, InMemoryCache,HttpLink} from '@apollo/client';
+import { ApolloClient, InMemoryCache, HttpLink, from } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
+import { onError } from '@apollo/client/link/error';
 
 const apiBaseUrl = import.meta.env.DEV ? "http://localhost:5000" : "";
 
-const link= new HttpLink({
-    uri:`${apiBaseUrl}/graphql`
-})
+const link = new HttpLink({
+  uri: `${apiBaseUrl}/graphql`,
+});
+
+function resetExpiredSession() {
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    return;
+  }
+
+  localStorage.removeItem("token");
+  window.location.replace("/");
+}
+
+const errorLink = onError(({ graphQLErrors, networkError }) => {
+  const graphQLMessages =
+    graphQLErrors?.map((error) => error.message?.toLowerCase?.() || "") || [];
+
+  const hasAuthGraphQLError = graphQLMessages.some(
+    (message) =>
+      message.includes("unauthorized") ||
+      message.includes("jwt expired") ||
+      message.includes("invalid token")
+  );
+
+  const networkMessage = networkError?.message?.toLowerCase?.() || "";
+  const hasAuthNetworkError =
+    networkMessage.includes("401") ||
+    networkMessage.includes("unauthorized") ||
+    networkMessage.includes("jwt expired");
+
+  if (hasAuthGraphQLError || hasAuthNetworkError) {
+    resetExpiredSession();
+  }
+});
 
 const authLink = setContext((_, { headers }) => {
   const token = localStorage.getItem("token");
@@ -21,6 +55,6 @@ const authLink = setContext((_, { headers }) => {
 });
 
 export const apolloClient = new ApolloClient({
-  link: authLink.concat(link),
+  link: from([errorLink, authLink, link]),
   cache: new InMemoryCache(),
-}); 
+});

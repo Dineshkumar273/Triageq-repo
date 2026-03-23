@@ -6,16 +6,6 @@ import config from "../config";
 import { JiraToken } from "../models/JiraToken.model";
 
 export default async function authRoutes(app: FastifyInstance) {
-  const getRequestOrigin = (req: any) => {
-    const proto =
-      (req.headers["x-forwarded-proto"] as string) || req.protocol || "http";
-    const host =
-      (req.headers["x-forwarded-host"] as string) ||
-      (req.headers.host as string);
-
-    return host ? `${proto}://${host}` : config.baseUrl;
-  };
-
   app.get("/auth/jira/login", async (_req, reply) => {
     const scopes = [
       "read:jira-user",
@@ -103,7 +93,9 @@ export default async function authRoutes(app: FastifyInstance) {
         { expiresIn: "1d" }
       );
 
-      const frontendOrigin = getRequestOrigin(req);
+      const frontendOrigin = config.frontendUrl || config.baseUrl;
+
+      console.log()
       return reply.redirect(`${frontendOrigin}/?token=${appToken}`);
     } catch (err: any) {
       console.error("Callback error:", err.response?.data || err.message);
