@@ -23,6 +23,7 @@ export default function Sprint() {
   const [btnText, setBtnText] = useState("Generate Sprint Plan");
   const [error, setError] = useState("");
   const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState("success");
   const [msgIndex, setMsgIndex] = useState(0);
   const [sprintPlans, setSprintPlans] = useState([]);
   const [generatedForProject, setGeneratedForProject] = useState(null);
@@ -58,6 +59,7 @@ export default function Sprint() {
     setDisabled(false);
     setBtnText("Generate Sprint Plan");
     setToastMessage("");
+    setToastType("success");
   }, [projectKey, selectionVersion]);
 
   useEffect(() => {
@@ -100,9 +102,13 @@ export default function Sprint() {
       setGeneratedForProject(projectKey);
       setGeneratedForVersion(selectionVersion);
       setSprintPlans(result?.data?.generateSprintPlan || []);
+      setToastType("success");
+      setToastMessage("Sprint plan generated successfully.");
     } catch (err) {
       console.error(err);
       setError("Failed to generate sprint plan. Please try again.");
+      setToastType("error");
+      setToastMessage("Failed to generate sprint plan.");
     } finally {
       setDisabled(false);
       setBtnText("Regenerate Plan");
@@ -130,17 +136,24 @@ export default function Sprint() {
 
     try {
       setError("");
-      await commitSprint({
+      const result = await commitSprint({
         variables: {
           projectKey,
           sprints,
         },
       });
 
+      if (!result?.data?.commitSprintToJira) {
+        throw new Error("Jira commit did not complete successfully.");
+      }
+
+      setToastType("success");
       setToastMessage("Sprint synced to Jira successfully.");
     } catch (err) {
       console.error(err);
       setError("Failed to commit sprint plan. Please try again.");
+      setToastType("error");
+      setToastMessage("Failed to commit sprint plan.");
     }
   }
 
@@ -177,7 +190,13 @@ export default function Sprint() {
   return (
     <div className="p-4">
       {toastMessage && (
-        <div className="fixed right-4 top-4 z-50 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700 shadow-lg">
+        <div
+          className={`fixed right-4 top-4 z-50 rounded-lg border px-4 py-3 text-sm font-medium shadow-lg ${
+            toastType === "success"
+              ? "border-green-200 bg-green-50 text-green-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+        >
           {toastMessage}
         </div>
       )}
