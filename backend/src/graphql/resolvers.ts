@@ -4,7 +4,7 @@ import { fetchJiraProjects, fetchJiraTickets, getUserToken, fetchAllJiraTickets,
 import axios from "axios";
 import { JiraTicket } from "../types/jira.types";
 import { formatEstimate } from "../utils/utils";
-import { generateAISprint } from "../services/sprintPlanner.services";
+import { generateAIInsights, generateAISprint } from "../services/sprintPlanner.services";
 import Engineer from "../models/enginner.model";
 formatEstimate
 
@@ -101,35 +101,22 @@ const resolvers = {
     },
     getAIInsights: async (_: any, { projectKey }: any, context: any) => {
       const userId = requireUserId(context);
-
       const issues = await fetchJiraTickets(userId, projectKey);
+      const engineers = await Engineer.find({ userId, projectKey });
+      const sprintEngineers = engineers
+        .filter(
+          (engineer) =>
+            typeof engineer.name === "string" &&
+            typeof engineer.capacity === "number"
+        )
+        .map((engineer) => ({
+          name: engineer.name as string,
+          role: engineer.role ?? undefined,
+          capacity: engineer.capacity as number,
+          jiraAccountId: engineer.jiraAccountId ?? undefined,
+        }));
 
-      const totalPoints = issues.reduce(
-        (sum: Number, i: any) => sum + (i.fields.customfield_10016 || 0),
-        0
-      );
-
-      const totalTickets = issues.length;
-      const unassigned = issues.filter((i: any) => !i.fields.assignee).length;
-
-      // 🔥 Assumption (can be dynamic later)
-      const teamSize = 4;
-      const capacityPerSprint = teamSize * 20;
-
-      const sprintEstimate = Math.ceil(totalPoints / capacityPerSprint);
-
-      return {
-        sprintEstimate,
-        workload: `${totalPoints} pts across ${totalTickets} tickets`,
-        risk:
-          unassigned > totalTickets * 0.3
-            ? "⚠️ High number of unassigned tickets"
-            : "✅ Team is balanced",
-        recommendation:
-          sprintEstimate > 2
-            ? "Split work into multiple sprints"
-            : "Proceed with current sprint plan",
-      };
+      return generateAIInsights(issues, sprintEngineers);
     },
     generateSprintPlan: async (_: any, { projectKey, regenerateKey }: any, context: any) => {
       const userId = requireUserId(context);

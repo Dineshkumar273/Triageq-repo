@@ -6,6 +6,7 @@ import Card from "../../components/ui/Cards";
 import { GET_AI_INSIGHTS, GET_STATS } from "../../graphql/queries";
 import RecentActivity from "./RecentActivity";
 import AIInsights from "./AIInsights";
+import DeliveryHealth from "./DeliveryHealth";
 
 export default function StatsGrid() {
   const client = useApolloClient();
@@ -93,12 +94,14 @@ export default function StatsGrid() {
       </div>
 
       <div className="mt-6 grid grid-cols-3 gap-6">
-        <div className="col-span-2">
+        <div className="col-span-2 h-full">
           <RecentActivity />
         </div>
 
         <AIInsights />
       </div>
+
+      <DeliveryHealth />
     </div>
   );
 }

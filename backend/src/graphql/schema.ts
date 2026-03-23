@@ -10,9 +10,13 @@
 
   type AIInsights {
     sprintEstimate:Int 
+    headline: String
+    confidence: String
     workload: String
     risk:String
     recommendation:String
+    blockers: [String]
+    nextActions: [String]
 
   }
   type Mutation {

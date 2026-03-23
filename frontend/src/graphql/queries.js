@@ -27,9 +27,13 @@ export const GET_AI_INSIGHTS = gql`
   query GetAIInsights($projectKey: String!) {
     getAIInsights(projectKey: $projectKey) {
       sprintEstimate
+      headline
+      confidence
       workload
       risk
       recommendation
+      blockers
+      nextActions
     }
   }
 `;

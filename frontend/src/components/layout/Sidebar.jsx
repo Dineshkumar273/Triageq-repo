@@ -1,4 +1,6 @@
 import { NavLink } from "react-router-dom";
+import { useQuery } from "@apollo/client/react";
+import { useSelector } from "react-redux";
 import {
   LayoutDashboard,
   Ticket,
@@ -6,6 +8,7 @@ import {
   Users,
 } from "lucide-react";
 import clsx from "clsx";
+import { GET_ENGINEERS } from "../../graphql/queries";
 
 const menu = [
   { name: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -15,6 +18,19 @@ const menu = [
 ];
 
 export default function Sidebar() {
+  const projectKey = useSelector((state) => state.project.projectKey);
+  const { data } = useQuery(GET_ENGINEERS, {
+    variables: { projectKey },
+    skip: !projectKey,
+    fetchPolicy: "cache-and-network",
+  });
+
+  const totalCapacity =
+    data?.getEngineers?.reduce(
+      (sum, engineer) => sum + (engineer.capacity || 0),
+      0
+    ) || 0;
+
   return (
     <div className="w-64 bg-white border-r px-5 py-6 flex flex-col">
       
@@ -54,7 +70,10 @@ export default function Sidebar() {
       {/* Bottom Card */}
       <div className="mt-auto bg-gray-100 rounded-xl p-4">
         <p className="text-xs text-gray-500">TEAM CAPACITY</p>
-        <h2 className="text-2xl font-bold">80 pts</h2>
+        <h2 className="text-2xl font-bold">{totalCapacity} pts</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          {projectKey ? projectKey : "Select a project"}
+        </p>
       </div>
     </div>
   );

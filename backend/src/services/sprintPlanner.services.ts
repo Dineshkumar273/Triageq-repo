@@ -58,6 +58,17 @@ type AIResponseSprint = {
   tickets?: Array<string | Partial<NormalizedTicket>>;
 };
 
+type AIInsightResponse = {
+  sprintEstimate?: number;
+  headline?: string;
+  confidence?: string;
+  workload?: string;
+  risk?: string;
+  recommendation?: string;
+  blockers?: string[];
+  nextActions?: string[];
+};
+
 function createSeededValue(input: string): number {
   let hash = 0;
 
@@ -113,6 +124,17 @@ function safeParse(content: string): AIResponseSprint[] {
   } catch (err) {
     console.error("Invalid JSON:", content);
     throw new Error("AI returned invalid JSON");
+  }
+}
+
+function safeParseInsight(content: string): AIInsightResponse {
+  try {
+    return JSON.parse(
+      content.replace(/```json/g, "").replace(/```/g, "").trim()
+    ) as AIInsightResponse;
+  } catch (err) {
+    console.error("Invalid AI insight JSON:", content);
+    throw new Error("AI returned invalid insight JSON");
   }
 }
 
@@ -428,6 +450,134 @@ async function fetchAISprintPlans(prompt: string): Promise<any> {
       }, config.sprintAiTimeoutMs);
     }),
   ]);
+}
+
+function buildFallbackInsights(
+  tickets: TicketInput[],
+  engineers: EngineerInput[]
+): AIInsightResponse {
+  const cleanTickets = normalizeTickets(tickets);
+  const totalPoints = cleanTickets.reduce((sum, ticket) => sum + ticket.points, 0);
+  const totalTickets = cleanTickets.length;
+  const unassigned = cleanTickets.filter((ticket) => !ticket.assignee).length;
+  const sprintCapacity = Math.max(
+    engineers.reduce((sum, engineer) => sum + engineer.capacity, 0),
+    40
+  );
+  const sprintEstimate = Math.max(Math.ceil(totalPoints / sprintCapacity), 1);
+
+  return {
+    sprintEstimate,
+    headline:
+      unassigned > totalTickets * 0.3
+        ? "Backlog needs ownership before sprint execution."
+        : "Backlog is in a workable state for sprint planning.",
+    confidence: engineers.length ? "Medium" : "Low",
+    workload: `${totalPoints} pts across ${totalTickets} tickets`,
+    risk:
+      unassigned > totalTickets * 0.3
+        ? "High number of unassigned tickets"
+        : "Team workload looks manageable",
+    recommendation:
+      sprintEstimate > 2
+        ? "Split work into multiple focused sprints"
+        : "Proceed with the current sprint plan",
+    blockers:
+      unassigned > 0
+        ? [`${unassigned} tickets are still unassigned.`]
+        : ["No immediate assignment blockers detected."],
+    nextActions: [
+      unassigned > 0
+        ? "Assign ticket owners before finalizing the sprint."
+        : "Validate ticket priorities with the team.",
+      sprintEstimate > 2
+        ? "Break the backlog into smaller sprint goals."
+        : "Review engineer capacity and confirm sprint scope.",
+    ],
+  };
+}
+
+export async function generateAIInsights(
+  tickets: TicketInput[],
+  engineers: EngineerInput[]
+): Promise<AIInsightResponse> {
+  const fallback = buildFallbackInsights(tickets, engineers);
+
+  if (!config.sprintAiEnabled) {
+    return fallback;
+  }
+
+  const cleanTickets = normalizeTickets(tickets);
+  const sprintCapacity = Math.max(
+    engineers.reduce((sum, engineer) => sum + engineer.capacity, 0),
+    40
+  );
+
+  const prompt = `
+You are an Agile delivery coach.
+
+Analyze this Jira backlog and return STRICT JSON ONLY:
+{
+  "sprintEstimate": number,
+  "headline": string,
+  "confidence": "Low" | "Medium" | "High",
+  "workload": string,
+  "risk": string,
+  "recommendation": string,
+  "blockers": string[],
+  "nextActions": string[]
+}
+
+Keep the language concise, practical, and action-oriented.
+Focus on delivery risk, ownership gaps, and what the team should do next.
+
+TEAM CAPACITY PER SPRINT: ${sprintCapacity}
+
+ENGINEERS:
+${engineers.length
+  ? engineers
+      .map(
+        (engineer) =>
+          `${engineer.name} | Role: ${engineer.role || "Unknown"} | Capacity: ${engineer.capacity}`
+      )
+      .join("\n")
+  : "No engineers configured"}
+
+TICKETS:
+${cleanTickets
+  .map(
+    (ticket, index) =>
+      `${index + 1}. ${ticket.key} | ${ticket.summary} | ${ticket.points} pts | ${ticket.priority} | Assignee: ${ticket.assignee || "Unassigned"}`
+  )
+  .join("\n")}
+`;
+
+  try {
+    const res = await Promise.race<any>([
+      ollama.chat({
+        model: "gpt-oss:120b-cloud",
+        messages: [{ role: "user", content: prompt }],
+      }),
+      new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error("AI insight generation timed out"));
+        }, config.sprintAiTimeoutMs);
+      }),
+    ]);
+
+    const content = res?.message?.content;
+    if (!content) {
+      throw new Error("AI insight response empty");
+    }
+
+    return {
+      ...fallback,
+      ...safeParseInsight(content),
+    };
+  } catch (err) {
+    console.error("AI insights failed:", err);
+    return fallback;
+  }
 }
 
 /* ------------------ MAIN FUNCTION ------------------ */
